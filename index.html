@@ -259,7 +259,7 @@
         <div class="max-w-6xl mx-auto px-4 flex flex-col sm:flex-row items-center justify-between gap-3">
             <p>&copy; 2026 Portofolio Tugas Fisika Iin. Guru Mapel: Nur Inayah, S.Pd.</p>
             <span class="inline-flex items-center text-blue-400 font-medium bg-blue-500/10 border border-blue-500/20 px-3 py-1 rounded-full">
-                <i class="fa-solid fa-check-circle mr-1.5 text-emerald-400"></i> Siap Dilihat Guru & Publik
+                <i class="fa-solid fa-check-circle mr-1.5 text-emerald-400"></i> Terhubung ke Cloud Publik
             </span>
         </div>
     </footer>
@@ -272,16 +272,15 @@
         let db, auth, userId = null;
         let allPosts = [];
         let compressedImagesArray = [];
-        const LOCAL_STORAGE_KEY = "iin_fisika_tasks_fast_v1";
+        const LOCAL_STORAGE_KEY = "iin_fisika_tasks_fast_v2";
 
-        const appId = typeof __app_id !== 'undefined' ? __app_id : 'iin-fisika-portofolio';
-        const firebaseConfig = typeof __firebase_config !== 'undefined' ? JSON.parse(__firebase_config) : {
-            apiKey: "AIzaSyDummyKeyForPreviewModeOnly12345",
-            authDomain: "dummy-project.firebaseapp.com",
-            projectId: "dummy-project",
-            storageBucket: "dummy-project.appspot.com",
-            messagingSenderId: "123456789",
-            appId: "1:123456789:web:abcdef"
+        const firebaseConfig = {
+          apiKey: "AIzaSyAflmf_cNh2D3OjOMv3pRpva6TXH3kFwLg",
+          authDomain: "portofoliofisikaiin.firebaseapp.com",
+          projectId: "portofoliofisikaiin",
+          storageBucket: "portofoliofisikaiin.firebasestorage.app",
+          messagingSenderId: "44965222885",
+          appId: "1:44965222885:web:a90e245e06644b5ec0b70c"
         };
 
         window.showAlert = function(title, message, isError = false) {
@@ -508,11 +507,6 @@
                 let local = JSON.parse(localStorage.getItem(LOCAL_STORAGE_KEY) || "[]");
                 local.unshift(newPost);
                 localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(local));
-                
-                if (!allPosts.some(p => p.id === newPost.id)) {
-                    allPosts.unshift(newPost);
-                    renderPosts(allPosts);
-                }
             } catch (e) {
                 console.warn("LocalStorage backup failed:", e);
             }
@@ -564,32 +558,22 @@
 
             try {
                 if (db) {
-                    const uploadPromise = addDoc(collection(db, 'artifacts', appId, 'public', 'data', 'iin_tasks'), newPost);
-                    const timeoutPromise = new Promise((_, reject) => setTimeout(() => reject(new Error("Timeout")), 2000));
-                    await Promise.race([uploadPromise, timeoutPromise]).catch(() => {});
+                    await addDoc(collection(db, 'iin_tasks'), newPost);
                 }
             } catch (err) {
-                console.warn("Cloud save warning:", err);
+                console.error("Cloud save error:", err);
+                showAlert("Peringatan Cloud", "Gagal menyimpan ke server cloud, tetapi data sudah diamankan di perangkat Anda.", true);
             } finally {
                 submitBtn.disabled = false;
                 submitText.innerHTML = '<i class="fa-solid fa-paper-plane mr-2"></i> Publikasikan Tugas';
                 submitSpinner.classList.add('hidden');
                 
                 closeUploadModal();
-                showAlert("Tugas Berhasil Terunggah!", `Foto tugas fisika Iin (${compressedImagesArray.length} foto) telah berhasil dipublikasikan.`);
+                showAlert("Tugas Berhasil Terunggah!", `Foto tugas fisika Iin (${compressedImagesArray.length} foto) telah berhasil dipublikasikan ke cloud.`);
             }
         }
 
         window.onload = async function() {
-            const localPosts = getLocalBackup();
-            allPosts = localPosts;
-            document.getElementById('loading-state').classList.add('hidden');
-            renderPosts(allPosts);
-
-            setTimeout(() => {
-                document.getElementById('loading-state').classList.add('hidden');
-            }, 300);
-
             try {
                 const app = initializeApp(firebaseConfig);
                 db = getFirestore(app);
@@ -600,15 +584,18 @@
                     initFirestoreListener();
                 }).catch(() => {
                     userId = 'iin-user';
+                    initFirestoreListener();
                 });
             } catch (e) {
                 userId = 'iin-user';
+                document.getElementById('loading-state').classList.add('hidden');
+                renderPosts(getLocalBackup());
             }
         }
 
         function initFirestoreListener() {
             try {
-                const notesCollection = collection(db, 'artifacts', appId, 'public', 'data', 'iin_tasks');
+                const notesCollection = collection(db, 'iin_tasks');
                 const q = query(notesCollection);
 
                 onSnapshot(q, (snapshot) => {
@@ -617,20 +604,19 @@
                         posts.push({ id: docSnap.id, ...docSnap.data() });
                     });
 
-                    const localBackup = getLocalBackup();
-                    const mergedMap = new Map();
-
-                    localBackup.forEach(p => mergedMap.set(p.id, p));
-                    posts.forEach(p => mergedMap.set(p.id, p));
-
-                    const combinedPosts = Array.from(mergedMap.values());
-                    combinedPosts.sort((a, b) => b.createdAt - a.createdAt);
-
-                    allPosts = combinedPosts;
+                    posts.sort((a, b) => b.createdAt - a.createdAt);
+                    allPosts = posts;
                     document.getElementById('loading-state').classList.add('hidden');
                     renderPosts(allPosts);
-                }, () => {});
-            } catch (err) {}
+                }, (error) => {
+                    console.error("Firestore listener error:", error);
+                    document.getElementById('loading-state').classList.add('hidden');
+                    renderPosts(getLocalBackup());
+                });
+            } catch (err) {
+                document.getElementById('loading-state').classList.add('hidden');
+                renderPosts(getLocalBackup());
+            }
         }
     </script>
 </body>
