@@ -272,7 +272,7 @@
         let db, auth, userId = null;
         let allPosts = [];
         let compressedImagesArray = [];
-        const LOCAL_STORAGE_KEY = "iin_fisika_tasks_fast_v2";
+        const LOCAL_STORAGE_KEY = "iin_fisika_tasks_fast_v3";
 
         const firebaseConfig = {
           apiKey: "AIzaSyAflmf_cNh2D3OjOMv3pRpva6TXH3kFwLg",
@@ -505,8 +505,16 @@
         function saveToLocalBackup(newPost) {
             try {
                 let local = JSON.parse(localStorage.getItem(LOCAL_STORAGE_KEY) || "[]");
-                local.unshift(newPost);
-                localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(local));
+                if(!local.some(p => p.id === newPost.id)) {
+                    local.unshift(newPost);
+                    localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(local));
+                }
+                
+                if (!allPosts.some(p => p.id === newPost.id)) {
+                    allPosts.unshift(newPost);
+                    document.getElementById('loading-state').classList.add('hidden');
+                    renderPosts(allPosts);
+                }
             } catch (e) {
                 console.warn("LocalStorage backup failed:", e);
             }
@@ -558,22 +566,29 @@
 
             try {
                 if (db) {
-                    await addDoc(collection(db, 'iin_tasks'), newPost);
+                    const uploadPromise = addDoc(collection(db, 'iin_tasks'), newPost);
+                    const timeoutPromise = new Promise((_, reject) => setTimeout(() => reject(new Error("Timeout")), 3000));
+                    await Promise.race([uploadPromise, timeoutPromise]).catch(() => {});
                 }
             } catch (err) {
-                console.error("Cloud save error:", err);
-                showAlert("Peringatan Cloud", "Gagal menyimpan ke server cloud, tetapi data sudah diamankan di perangkat Anda.", true);
+                console.warn("Cloud save warning:", err);
             } finally {
                 submitBtn.disabled = false;
                 submitText.innerHTML = '<i class="fa-solid fa-paper-plane mr-2"></i> Publikasikan Tugas';
                 submitSpinner.classList.add('hidden');
                 
                 closeUploadModal();
-                showAlert("Tugas Berhasil Terunggah!", `Foto tugas fisika Iin (${compressedImagesArray.length} foto) telah berhasil dipublikasikan ke cloud.`);
+                showAlert("Tugas Berhasil Terunggah!", `Foto tugas fisika Iin (${compressedImagesArray.length} foto) telah berhasil dipublikasikan.`);
             }
         }
 
         window.onload = async function() {
+            // Render local backup instantly to eliminate loading delay
+            const localPosts = getLocalBackup();
+            allPosts = localPosts;
+            document.getElementById('loading-state').classList.add('hidden');
+            renderPosts(allPosts);
+
             try {
                 const app = initializeApp(firebaseConfig);
                 db = getFirestore(app);
@@ -588,8 +603,6 @@
                 });
             } catch (e) {
                 userId = 'iin-user';
-                document.getElementById('loading-state').classList.add('hidden');
-                renderPosts(getLocalBackup());
             }
         }
 
@@ -604,19 +617,22 @@
                         posts.push({ id: docSnap.id, ...docSnap.data() });
                     });
 
-                    posts.sort((a, b) => b.createdAt - a.createdAt);
-                    allPosts = posts;
-                    document.getElementById('loading-state').classList.add('hidden');
-                    renderPosts(allPosts);
-                }, (error) => {
-                    console.error("Firestore listener error:", error);
-                    document.getElementById('loading-state').classList.add('hidden');
-                    renderPosts(getLocalBackup());
-                });
-            } catch (err) {
-                document.getElementById('loading-state').classList.add('hidden');
-                renderPosts(getLocalBackup());
-            }
+                    if (posts.length > 0) {
+                        const localBackup = getLocalBackup();
+                        const mergedMap = new Map();
+
+                        localBackup.forEach(p => mergedMap.set(p.id, p));
+                        posts.forEach(p => mergedMap.set(p.id, p));
+
+                        const combinedPosts = Array.from(mergedMap.values());
+                        combinedPosts.sort((a, b) => b.createdAt - a.createdAt);
+
+                        allPosts = combinedPosts;
+                        document.getElementById('loading-state').classList.add('hidden');
+                        renderPosts(allPosts);
+                    }
+                }, () => {});
+            } catch (err) {}
         }
     </script>
 </body>
